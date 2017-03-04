@@ -64,12 +64,17 @@ class GamePanel extends JPanel implements ActionListener {
     screen = new JPanel(layout);
     screen.add(readyBoard, "ready");
     screen.add(board, "game");
-    add(screen, BorderLayout.NORTH);
+    add(screen, BorderLayout.CENTER);
 
     kifu = new JTextArea("kifu", 7, 40);
     kifu.setBorder(new EtchedBorder(EtchedBorder.RAISED));
     JScrollPane kifusc = new JScrollPane(kifu);
     add(kifusc, BorderLayout.SOUTH);
+
+    JButton stopButton = new JButton("stop");
+    stopButton.addActionListener(this);
+    stopButton.setActionCommand("Stop");
+    add(stopButton);
 
     //add(new JPanel(), BorderLayout.WEST);
     //add(new JPanel(), BorderLayout.EAST);
@@ -79,6 +84,10 @@ class GamePanel extends JPanel implements ActionListener {
     String cmd = e.getActionCommand();
     if (cmd.equals("Next")) {
       changeScene("startGame");
+    }
+    if (cmd.equals("Stop")) {
+      board.halt();
+      changeScene("Standby");
     }
   }
 
@@ -116,6 +125,10 @@ class Board extends JPanel implements ActionListener {
         add(cell);
       }
     }
+  }
+
+  public void halt() {
+    running = false;
   }
 
   boolean validateAndFlip(int row, int line, boolean simulation) {
