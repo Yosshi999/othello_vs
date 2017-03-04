@@ -41,6 +41,7 @@ class GamePanel extends JPanel implements ActionListener {
   CardLayout layout;
   Board board;
   SettingPanel white, black;
+  JTextArea kifu;
 
   GamePanel(int x, int y, int size, SettingPanel _white, SettingPanel _black) {
     //setLayout( new BorderLayout() );
@@ -65,7 +66,7 @@ class GamePanel extends JPanel implements ActionListener {
     screen.add(board, "game");
     add(screen, BorderLayout.NORTH);
 
-    JTextArea kifu = new JTextArea("kifu", 7, 40);
+    kifu = new JTextArea("kifu", 7, 40);
     kifu.setBorder(new EtchedBorder(EtchedBorder.RAISED));
     JScrollPane kifusc = new JScrollPane(kifu);
     add(kifusc, BorderLayout.SOUTH);
@@ -86,7 +87,7 @@ class GamePanel extends JPanel implements ActionListener {
       layout.last(screen);
       board.init();
       repaint();
-      board.startGame(white, black);
+      board.startGame(white, black, kifu);
     }
     if (query.equals("Standby")) {
       layout.first(screen);
@@ -94,6 +95,7 @@ class GamePanel extends JPanel implements ActionListener {
   }
 }
 class Board extends JPanel implements ActionListener {
+  JTextArea kifu;
   Cell[][] cells = new Cell[8][8];
   SettingPanel[] player = new SettingPanel[2];
   boolean[] isHuman = new boolean[2];
@@ -150,8 +152,25 @@ class Board extends JPanel implements ActionListener {
         }
       }
     }
-    if (canFlip) return true;
-    else return false;
+    if (canFlip) {
+      cells[row][line].putStone(turn==0?1:-1);
+      kifu.append(""+"abcdefgh".charAt(line) + (row+1) + (turn==0?" ":"\n"));
+
+      // update the number of stones
+      int w = 0, b = 0;
+      for (int i=0; i<8; i++) {
+        for (int j=0; j<8; j++) {
+          int state = cells[i][j].getState();
+          if (state == 1) w++;
+          if (state == -1) b++;
+        }
+      }
+      player[0].setStones(w);
+      player[1].setStones(b);
+      return true;
+    } else {
+      return false;
+    }
   }
   public void onClick(int row, int line) {
     if (running && isHuman[turn]) { // if waiting for human player
@@ -161,8 +180,6 @@ class Board extends JPanel implements ActionListener {
         // stop timer
         long passed = System.currentTimeMillis() - startThinking;
         leftTime[turn] -= passed;
-
-        cells[row][line].putStone(turn==0?1:-1);
 
         // switch turn
         turn ^= 1;
@@ -182,14 +199,15 @@ class Board extends JPanel implements ActionListener {
     cells[3][4].putStone(-1);
     cells[4][3].putStone(-1);
 
-    // decide Player
   }
 
-  public void startGame(SettingPanel white, SettingPanel black) {
+  public void startGame(SettingPanel white, SettingPanel black, JTextArea _kifu) {
     player[0] = white;
     player[1] = black;
+    kifu = _kifu;
 
     for (int i=0; i<2; i++) {
+      player[i].setStones(2);
       isHuman[i] = player[i].isHuman();
       if (!isHuman[i]) {
         //exec
@@ -202,7 +220,8 @@ class Board extends JPanel implements ActionListener {
     turn = 0;
     running = true;
     startThinking = System.currentTimeMillis();
-    System.out.println("begin");
+    kifu.setText("--begin--\n");
+
     new Timer(30, this).start();
   }
 
