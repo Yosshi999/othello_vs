@@ -103,6 +103,7 @@ class Board extends JPanel implements ActionListener {
   int turn; // 0: white, 1: black
   boolean running;
   long startThinking;
+  Timer loopTimer;
 
   Board() {
     setLayout( new GridLayout(8,8) );
@@ -117,7 +118,7 @@ class Board extends JPanel implements ActionListener {
     }
   }
 
-  boolean validateAndFlip(int row, int line) {
+  boolean validateAndFlip(int row, int line, boolean simulation) {
     if (cells[row][line].getState() != 0) return false;
     int[][] offset = {{0,1}, {1,0}, {0,-1}, {-1,0}, {1,1}, {-1,-1}, {1,-1}, {-1,1}};
 
@@ -139,11 +140,13 @@ class Board extends JPanel implements ActionListener {
           if (hasEnemy) {
             // canFlip
             canFlip = true;
-            int back_r = r, back_l = l;
-            while (back_r != row || back_l != line) {
-              cells[back_r][back_l].putStone(myColor);
-              back_r -= offset[i][0];
-              back_l -= offset[i][1];
+            if (!simulation) {
+              int back_r = r, back_l = l;
+              while (back_r != row || back_l != line) {
+                cells[back_r][back_l].putStone(myColor);
+                back_r -= offset[i][0];
+                back_l -= offset[i][1];
+              }
             }
           } else {
             // unable to Flip
@@ -153,20 +156,22 @@ class Board extends JPanel implements ActionListener {
       }
     }
     if (canFlip) {
-      cells[row][line].putStone(turn==0?1:-1);
-      kifu.append(""+"abcdefgh".charAt(line) + (row+1) + (turn==0?" ":"\n"));
+      if (!simulation) {
+        cells[row][line].putStone(turn==0?1:-1);
+        kifu.append(""+"abcdefgh".charAt(line) + (row+1) + (turn==0?" ":"\n"));
 
-      // update the number of stones
-      int w = 0, b = 0;
-      for (int i=0; i<8; i++) {
-        for (int j=0; j<8; j++) {
-          int state = cells[i][j].getState();
-          if (state == 1) w++;
-          if (state == -1) b++;
+        // update the number of stones
+        int w = 0, b = 0;
+        for (int i=0; i<8; i++) {
+          for (int j=0; j<8; j++) {
+            int state = cells[i][j].getState();
+            if (state == 1) w++;
+            if (state == -1) b++;
+          }
         }
+        player[0].setStones(w);
+        player[1].setStones(b);
       }
-      player[0].setStones(w);
-      player[1].setStones(b);
       return true;
     } else {
       return false;
@@ -175,17 +180,46 @@ class Board extends JPanel implements ActionListener {
   public void onClick(int row, int line) {
     if (running && isHuman[turn]) { // if waiting for human player
       // validate & FlipStone
-      boolean canFlip = validateAndFlip(row, line);
+      boolean canFlip = validateAndFlip(row, line, false);
       if (canFlip) {
-        // stop timer
-        long passed = System.currentTimeMillis() - startThinking;
-        leftTime[turn] -= passed;
-
-        // switch turn
-        turn ^= 1;
-        startThinking = System.currentTimeMillis();
+        switchTurn(0);
       }
     }
+  }
+
+  void switchTurn(int passCount) {
+    if (passCount == 0) { // if this func isn't called after pass
+      // stop timer
+      long passed = System.currentTimeMillis() - startThinking;
+      leftTime[turn] -= passed;
+    }
+    if (passCount == 2) { // both players pass
+      // game over
+      running = false;
+      return;
+    }
+
+    // switch turn
+    turn ^= 1;
+    // pass or not
+    boolean canPut = false;
+    for (int i=0; i<8; i++) {
+      for (int j=0; j<8; j++) {
+        if (validateAndFlip(i,j,true)) {
+          canPut = true;
+          break;
+        }
+      }
+      if (canPut) break;
+    }
+    if (!canPut) {
+      // pass
+      kifu.append("--" + (turn==0?" ":"\n"));
+      switchTurn(passCount+1);
+      return;
+    }
+
+    startThinking = System.currentTimeMillis();
   }
 
   public void init() {
@@ -222,10 +256,15 @@ class Board extends JPanel implements ActionListener {
     startThinking = System.currentTimeMillis();
     kifu.setText("--begin--\n");
 
-    new Timer(30, this).start();
+    loopTimer = new Timer(30, this);
+    loopTimer.start();
   }
 
   public void actionPerformed(ActionEvent e) {
+    if (!running) {
+      loopTimer.stop();
+      return;
+    }
     if (isHuman[turn]) {  // human
       long passed = System.currentTimeMillis() - startThinking;
       if (leftTime[turn] - passed <= 0) {
