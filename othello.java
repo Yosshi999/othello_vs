@@ -16,8 +16,9 @@ public class othello extends JFrame {
 
 
     SettingPanel left = new SettingPanel("White", Color.WHITE);
-    GamePanel center = new GamePanel(WIN_WIDTH/2, WIN_HEIGHT/2, 400);
     SettingPanel right = new SettingPanel("Black", Color.BLACK);
+    GamePanel center = new GamePanel(WIN_WIDTH/2, WIN_HEIGHT/2, 400, left, right);
+
     left.setPreferredSize(new Dimension(180, WIN_HEIGHT));
     //center.setPreferredSize(new Dimension(320, WIN_HEIGHT));
     right.setPreferredSize(new Dimension(180, WIN_HEIGHT));
@@ -39,9 +40,12 @@ class GamePanel extends JPanel implements ActionListener {
   JPanel screen;
   CardLayout layout;
   Board board;
+  SettingPanel white, black;
 
-  GamePanel(int x, int y, int size) {
+  GamePanel(int x, int y, int size, SettingPanel _white, SettingPanel _black) {
     //setLayout( new BorderLayout() );
+    white = _white;
+    black = _black;
 
     board = new Board();
     board.setPreferredSize(new Dimension(size,size));
@@ -73,23 +77,96 @@ class GamePanel extends JPanel implements ActionListener {
   public void actionPerformed(ActionEvent e) {
     String cmd = e.getActionCommand();
     if (cmd.equals("Next")) {
-      layout.next(screen);
+      changeScene("startGame");
+    }
+  }
+
+  public void changeScene(String query) {
+    if (query.equals("startGame")) {
+      layout.last(screen);
       board.init();
-      board.startGame();
+      repaint();
+      board.startGame(white, black);
+    }
+    if (query.equals("Standby")) {
+      layout.first(screen);
     }
   }
 }
-class Board extends JPanel {
+class Board extends JPanel implements ActionListener {
   Cell[][] cells = new Cell[8][8];
+  SettingPanel[] player = new SettingPanel[2];
+  boolean[] isHuman = new boolean[2];
+  long[] leftTime = new long[2];
+  int turn; // 0: white, 1: black
+  boolean running;
+  long startThinking;
+
   Board() {
     setLayout( new GridLayout(8,8) );
     for (int i=0; i<8; i++) {
       for (int j=0; j<8; j++) {
-        Cell cell = new Cell(i, j);
+        Cell cell = new Cell(i, j, this);
         cell.setBackground(Color.GREEN);
         cell.setBorder(new EtchedBorder(EtchedBorder.RAISED));
         cells[i][j] = cell;
         add(cell);
+      }
+    }
+  }
+
+  boolean validateAndFlip(int row, int line) {
+    if (cells[row][line].getState() != 0) return false;
+    int[][] offset = {{0,1}, {1,0}, {0,-1}, {-1,0}, {1,1}, {-1,-1}, {1,-1}, {-1,1}};
+
+
+    // white turn=0,stone=1 : black turn=1,stone=-1
+    int myColor = turn==0?1:-1;
+    boolean canFlip = false;
+    for (int i=0; i<offset.length; i++) {
+      boolean hasEnemy = false;
+      for (int r=row, l=line; 0<=r && r<8 && 0<=l && l<8; r+=offset[i][0], l+=offset[i][1]) {
+        if (r==row && l==line) continue; // first ite
+        int state = cells[r][l].getState();
+        if (state == 0) break;  // unable to flip
+        if (state == myColor*(-1)) {
+          hasEnemy = true;
+          continue;
+        }
+        if (state == myColor) {
+          if (hasEnemy) {
+            // canFlip
+            canFlip = true;
+            int back_r = r, back_l = l;
+            while (back_r != row || back_l != line) {
+              cells[back_r][back_l].putStone(myColor);
+              back_r -= offset[i][0];
+              back_l -= offset[i][1];
+            }
+          } else {
+            // unable to Flip
+            break;
+          }
+        }
+      }
+    }
+    if (canFlip) return true;
+    else return false;
+  }
+  public void onClick(int row, int line) {
+    if (running && isHuman[turn]) { // if waiting for human player
+      // validate & FlipStone
+      boolean canFlip = validateAndFlip(row, line);
+      if (canFlip) {
+        // stop timer
+        long passed = System.currentTimeMillis() - startThinking;
+        leftTime[turn] -= passed;
+
+        cells[row][line].putStone(turn==0?1:-1);
+
+        // switch turn
+        turn ^= 1;
+        startThinking = System.currentTimeMillis();
       }
     }
   }
@@ -104,22 +181,66 @@ class Board extends JPanel {
     cells[4][4].putStone(1);
     cells[3][4].putStone(-1);
     cells[4][3].putStone(-1);
+
+    // decide Player
+  }
+
+  public void startGame(SettingPanel white, SettingPanel black) {
+    player[0] = white;
+    player[1] = black;
+
+    for (int i=0; i<2; i++) {
+      isHuman[i] = player[i].isHuman();
+      if (!isHuman[i]) {
+        //exec
+
+      }
+      leftTime[i] = player[i].getTime()*1000;
+      player[i].setLeftTime(leftTime[i]);
+    }
+
+    turn = 0;
+    running = true;
+    startThinking = System.currentTimeMillis();
+    System.out.println("begin");
+    new Timer(30, this).start();
+  }
+
+  public void actionPerformed(ActionEvent e) {
+    if (isHuman[turn]) {  // human
+      long passed = System.currentTimeMillis() - startThinking;
+      if (leftTime[turn] - passed <= 0) {
+        player[turn].setLeftTime(0);
+        // TLE
+        running = false;
+      } else {
+        player[turn].setLeftTime(leftTime[turn] - passed);
+      }
+    }
   }
 
 }
-class Cell extends JPanel {
+class Cell extends JPanel implements MouseListener {
   int pos_row, pos_line, r;
+  Board mgr;
 
   int state;  // 0: empty, -1: black, 1: white
-  Cell(int row, int line) {
+  Cell(int row, int line, Board board) {
     pos_row = row;
     pos_line = line;
     r = 40;
     state = 0;
+    mgr = board;
+    addMouseListener(this);
+  }
+
+  public void mouseClicked(MouseEvent e) {
+    mgr.onClick(pos_row, pos_line);
   }
 
   public void putStone(int stoneCol) {
     state = stoneCol;
+    repaint();
   }
   public int getState() {
     return state;
@@ -148,10 +269,21 @@ class Cell extends JPanel {
       g.drawOval((int)cellsize/2-r/2, (int)cellsize/2-r/2, r, r);
     }
   }
+
+  public void mousePressed(MouseEvent e) {}
+  public void mouseReleased(MouseEvent e) {}
+  public void mouseEntered(MouseEvent e) {}
+  public void mouseExited(MouseEvent e) {}
 }
 
 
 class SettingPanel extends JPanel {
+  PlayerOption op;
+  JLabel stones;
+  TimeOption ti;
+  JLabel timer;
+  JTextArea cout, cerr;
+
   SettingPanel(String name, Color color) {
     //setLayout( new BoxLayout(this, BoxLayout.Y_AXIS) );
     setLayout( new GridLayout(7,1) );
@@ -161,46 +293,68 @@ class SettingPanel extends JPanel {
     jl.setFont(new Font(null, 0, 30));
     add(jl);
 
-    PlayerOption op = new PlayerOption();
+    op = new PlayerOption();
     add(op);
 
-    JLabel stones = new JLabel("0");
+    stones = new JLabel("0");
     stones.setFont( new Font(null, 0, 30));
     add(stones);
 
-    TimeOption ti = new TimeOption();
+    ti = new TimeOption();
     add(ti);
 
-    JLabel timer = new JLabel("0:00");
+    timer = new JLabel("0:00");
     timer.setFont( new Font(null, 0, 30) );
     add(timer);
 
-    JTextArea cout = new JTextArea("cout");
+    cout = new JTextArea("cout");
     cout.setBorder(new EtchedBorder(EtchedBorder.RAISED));
     JScrollPane coutsc = new JScrollPane(cout);
     add(coutsc);
-    JTextArea cerr = new JTextArea("cerr");
+    cerr = new JTextArea("cerr");
     cerr.setBorder(new EtchedBorder(EtchedBorder.RAISED));
     JScrollPane cerrsc = new JScrollPane(cerr);
     add(cerrsc);
   }
+
+  public boolean isHuman() {
+    return op.isHuman();
+  }
+  public String getPath(){
+    return op.getPath();
+  }
+  public void setStones(int num) {
+    stones.setText(String.valueOf(num));
+  }
+  public void setLeftTime(long millisec) {
+    timer.setText( String.format("%d:%02d.%03d", millisec/1000/60, millisec/1000%60, millisec%1000) );
+  }
+  public int getTime() {
+    return ti.getTime();
+  }
 }
 
 class TimeOption extends JPanel {
+  JSpinner time;
+
   TimeOption() {
     setLayout(null);
     JLabel jl = new JLabel("time:");
     jl.setBounds(10,10,30,20);
     add(jl);
 
-    JSpinner time = new JSpinner();
+    time = new JSpinner();
     time.setBounds(50,10,60,20);
+    time.setValue(180);
     add(time);
 
     JLabel jl2 = new JLabel("sec");
     jl2.setBounds(120,10,30,20);
     add(jl2);
+  }
 
+  public int getTime() {  // return seconds
+    return (Integer)time.getValue();
   }
 }
 class PlayerOption extends JPanel implements ChangeListener {
@@ -243,5 +397,12 @@ class PlayerOption extends JPanel implements ChangeListener {
     if (radio2.isSelected()) {
       text.setEditable(true);
     }
+  }
+
+  public boolean isHuman() {
+    return radio1.isSelected();
+  }
+  public String getPath() {
+    return text.getText();
   }
 }
