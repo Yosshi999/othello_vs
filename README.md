@@ -1,5 +1,6 @@
 # othello_vs
-input
+
+## input
 
 
     T
@@ -20,3 +21,10 @@ bij: stone at (i,j)
 
 ('.':empty, 'o':white, 'x':black)
 
+## output
+
+    i j
+
+i,j: put stone at (i,j)
+
+0 <= i,j <= 7
