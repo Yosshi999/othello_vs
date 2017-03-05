@@ -30,6 +30,13 @@ public class othello extends JFrame {
     add(center, BorderLayout.CENTER);
     add(right, BorderLayout.EAST);
 
+    addWindowListener(new WindowAdapter() {
+              public void windowClosing(WindowEvent e)  {
+                  center.force_halt();
+                  System.exit(0);
+              }
+         });
+
   }
 
   public static void main(String[] args) {
@@ -81,6 +88,10 @@ class GamePanel extends JPanel implements ActionListener {
 
     //add(new JPanel(), BorderLayout.WEST);
     //add(new JPanel(), BorderLayout.EAST);
+  }
+  public void force_halt() {
+    // on closing window
+    board.destroy_all();
   }
 
   public void actionPerformed(ActionEvent e) {
@@ -145,9 +156,10 @@ class IOThread extends Thread {
     id = myId;
     System.out.println("open iothread " + id);
   }
-  public void write(long leftTime, int lastRow, int lastLine, String[] board) {
+  public void write(long nanosec, int lastRow, int lastLine, String[] board) {
     try {
       // System.out.println("writing");
+      long leftTime = nanosec/1000000; // millisec
       bw.write("" + leftTime);
       bw.newLine();
       bw.flush();
@@ -191,7 +203,7 @@ class Board extends JPanel implements ActionListener {
   IOThread[] iot = new IOThread[2];
   InputThread[] it = new InputThread[2];
 
-  long[] leftTime = new long[2];
+  long[] leftTime = new long[2];  // nano seconds
   int turn; // 0: white, 1: black
   boolean running;
   boolean waiting;
@@ -214,6 +226,25 @@ class Board extends JPanel implements ActionListener {
   public void halt() {
     System.out.println("halt");
     running = false;
+  }
+
+  public void destroy_all() {
+    // on window closing
+    for (int i=0; i<2; i++) {
+      if (!isHuman[i] && process[i]!=null) {
+        // try {
+        //   process[i].getErrorStream().close();
+        //   process[i].getInputStream().close();
+        //   process[i].getOutputStream().close();
+        // } catch (IOException e) {
+        //   e.printStackTrace();
+        // }
+        process[i].destroy();
+        process[i] = null;
+        System.out.println("destroyed " + i);
+
+      }
+    }
   }
 
   boolean validateAndFlip(int row, int line, boolean simulation) {
@@ -321,8 +352,9 @@ class Board extends JPanel implements ActionListener {
   void endTurn() {
     waiting = false;
     // stop timer
-    long passed = System.currentTimeMillis() - startThinking;
+    long passed = System.nanoTime() - startThinking;
     leftTime[turn] -= passed;
+    player[turn].setLeftTime(leftTime[turn]);
     ActionListener task = new ActionListener() {
       public void actionPerformed(ActionEvent e) {
         switchTurn(0);
@@ -363,7 +395,7 @@ class Board extends JPanel implements ActionListener {
       return;
     }
 
-    startThinking = System.currentTimeMillis();
+    startThinking = System.nanoTime();
     waiting = true;
     if (!isHuman[turn]) {
       String[] boardstr = new String[8];
@@ -416,6 +448,7 @@ class Board extends JPanel implements ActionListener {
           String path = player[i].getPath();
           if (path.equals("")) {
             System.out.println("invalid path");
+            destroy_all();
             return;
           }
           System.out.println("opening " + path);
@@ -440,7 +473,7 @@ class Board extends JPanel implements ActionListener {
           return;
         }
       }
-      leftTime[i] = player[i].getTime()*1000;
+      leftTime[i] = ((long)player[i].getTime())*1000000000;
       player[i].setLeftTime(leftTime[i]);
       player[i].clearIO();
     }
@@ -448,7 +481,7 @@ class Board extends JPanel implements ActionListener {
     turn = 0;
     running = true;
     waiting = true;
-    startThinking = System.currentTimeMillis();
+    startThinking = System.nanoTime();
     kifu.setText("--begin--\n");
     if (!isHuman[turn]) {
       String[] boardstr = {
@@ -471,22 +504,18 @@ class Board extends JPanel implements ActionListener {
   public void actionPerformed(ActionEvent e) {
     if (!running) {
       loopTimer.stop();
-      for (int i=0; i<2; i++) {
-        if (!isHuman[i]) {
-          process[i].destroy();
-          System.out.println("destroyed " + i);
-        }
-      }
+      destroy_all();
       return;
     }
-
-    long passed = System.currentTimeMillis() - startThinking;
-    if (leftTime[turn] - passed <= 0) {
-      player[turn].setLeftTime(0);
-      // TLE
-      halt();
-    } else {
-      player[turn].setLeftTime(leftTime[turn] - passed);
+    if (waiting) {
+      long passed = System.nanoTime() - startThinking;
+      if (leftTime[turn] - passed <= 0) {
+        player[turn].setLeftTime(0);
+        // TLE
+        halt();
+      } else {
+        player[turn].setLeftTime(leftTime[turn] - passed);
+      }
     }
   }
 
@@ -597,7 +626,8 @@ class SettingPanel extends JPanel {
   public void setStones(int num) {
     stones.setText(String.valueOf(num));
   }
-  public void setLeftTime(long millisec) {
+  public void setLeftTime(long nanosec) {
+    long millisec = nanosec/1000000;
     timer.setText( String.format("%d:%02d.%03d", millisec/1000/60, millisec/1000%60, millisec%1000) );
   }
   public int getTime() {
