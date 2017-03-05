@@ -4,6 +4,9 @@ import java.awt.event.*;
 import javax.swing.event.*;
 import javax.swing.border.EtchedBorder;
 
+import java.io.*;
+import java.lang.Exception.*;
+
 public class othello extends JFrame {
 
   static final int WIN_HEIGHT = 600;
@@ -103,14 +106,95 @@ class GamePanel extends JPanel implements ActionListener {
     }
   }
 }
+class InputThread extends Thread {
+  BufferedReader br;
+  Board mgr;
+  int id;
+  InputThread(InputStream is, Board caller, int myId) {
+    br = new BufferedReader(new InputStreamReader(is));
+    mgr = caller;
+    id = myId;
+    System.out.println("open errthread " + id);
+  }
+  @Override
+  public void run() {
+    try {
+      for (;;) {
+        String line = br.readLine();
+        if (line == null) break;
+        mgr.onCerr(line, id);
+      }
+    } catch (IOException e) {
+      System.out.println("exception");
+      mgr.halt();
+      throw new RuntimeException(e);
+    }
+    System.out.println("close errthread " + id);
+  }
+}
+
+class IOThread extends Thread {
+  BufferedReader br;
+  BufferedWriter bw;
+  Board mgr;
+  int id;
+  IOThread(InputStream is, OutputStream os, Board caller, int myId) {
+    br = new BufferedReader(new InputStreamReader(is));
+    bw = new BufferedWriter(new OutputStreamWriter(os));
+    mgr = caller;
+    id = myId;
+    System.out.println("open iothread " + id);
+  }
+  public void write(long leftTime, int lastRow, int lastLine, String[] board) {
+    try {
+      // System.out.println("writing");
+      bw.write("" + leftTime);
+      bw.newLine();
+      bw.flush();
+      bw.write( String.format("%d %d", lastRow, lastLine) );
+      bw.newLine();
+      bw.flush();
+      for (int i=0; i<board.length; i++) {
+        bw.write(board[i]);
+        bw.newLine();
+        bw.flush();
+      }
+      // System.out.println("wrote");
+    } catch (IOException e) {
+      e.printStackTrace();
+      mgr.halt();
+    }
+  }
+
+  @Override
+  public void run() {
+    try {
+      for (;;) {
+        String line = br.readLine();
+        if (line == null) break;
+        mgr.onCout(line, id);
+      }
+    } catch (IOException e) {
+      System.out.println("exception");
+      mgr.halt();
+      throw new RuntimeException(e);
+    }
+    System.out.println("close iothread " + id);
+  }
+}
 class Board extends JPanel implements ActionListener {
   JTextArea kifu;
   Cell[][] cells = new Cell[8][8];
   SettingPanel[] player = new SettingPanel[2];
   boolean[] isHuman = new boolean[2];
+  Process[] process = new Process[2];
+  IOThread[] iot = new IOThread[2];
+  InputThread[] it = new InputThread[2];
+
   long[] leftTime = new long[2];
   int turn; // 0: white, 1: black
   boolean running;
+  boolean waiting;
   long startThinking;
   Timer loopTimer;
 
@@ -128,6 +212,7 @@ class Board extends JPanel implements ActionListener {
   }
 
   public void halt() {
+    System.out.println("halt");
     running = false;
   }
 
@@ -191,24 +276,70 @@ class Board extends JPanel implements ActionListener {
     }
   }
   public void onClick(int row, int line) {
-    if (running && isHuman[turn]) { // if waiting for human player
+    if (running && waiting && isHuman[turn]) { // if waiting for human player
       // validate & FlipStone
       boolean canFlip = validateAndFlip(row, line, false);
       if (canFlip) {
-        switchTurn(0);
+        endTurn();
       }
     }
   }
 
+  public void onCerr(String input, int id) {
+    if (id == 0 || id == 1) {
+      player[id].Cerr(input);
+    }
+  }
+
+  public void onCout(String input, int id) {
+    if (id == 0 || id == 1) {
+      player[id].Cout(input);
+    }
+    try {
+      if (running && waiting && !isHuman[turn]) { // if waiting for AI
+        int row,line;
+        String[] sp = input.split(" ", 0);
+        row = Integer.parseInt(sp[0]);
+        line = Integer.parseInt(sp[1]);
+
+        boolean canFlip = validateAndFlip(row, line, false);
+        if (canFlip) {
+          endTurn();
+        } else {
+          // wrong answer
+          // halt
+          kifu.append("##unable to put##\n");
+          halt();
+        }
+      }
+    } catch (NumberFormatException e) {
+      kifu.append("##bad format##\n");
+      halt();
+    }
+  }
+
+  void endTurn() {
+    waiting = false;
+    // stop timer
+    long passed = System.currentTimeMillis() - startThinking;
+    leftTime[turn] -= passed;
+    ActionListener task = new ActionListener() {
+      public void actionPerformed(ActionEvent e) {
+        switchTurn(0);
+      }
+    };
+    Timer t = new Timer(100, task);
+    t.setRepeats(false);
+    t.start();
+  }
+
   void switchTurn(int passCount) {
     if (passCount == 0) { // if this func isn't called after pass
-      // stop timer
-      long passed = System.currentTimeMillis() - startThinking;
-      leftTime[turn] -= passed;
+      // nothing
     }
     if (passCount == 2) { // both players pass
       // game over
-      running = false;
+      halt();
       return;
     }
 
@@ -233,6 +364,29 @@ class Board extends JPanel implements ActionListener {
     }
 
     startThinking = System.currentTimeMillis();
+    waiting = true;
+    if (!isHuman[turn]) {
+      String[] boardstr = new String[8];
+      for (int i=0; i<8; i++) {
+        String rowstr = "";
+        for (int j=0; j<8; j++) {
+          switch (cells[i][j].getState()) {
+            case 0:
+              rowstr += ".";
+              break;
+            case 1:
+              rowstr += "o";
+              break;
+            case -1:
+              rowstr += "x";
+              break;
+          }
+        }
+        boardstr[i] = rowstr;
+      }
+      // System.out.println("ai turn");
+      iot[turn].write(leftTime[turn], turn, -1, boardstr);
+    }
   }
 
   public void init() {
@@ -258,16 +412,57 @@ class Board extends JPanel implements ActionListener {
       isHuman[i] = player[i].isHuman();
       if (!isHuman[i]) {
         //exec
+        try {
+          String path = player[i].getPath();
+          if (path.equals("")) {
+            System.out.println("invalid path");
+            return;
+          }
+          System.out.println("opening " + path);
+          ProcessBuilder pb = new ProcessBuilder(path);
 
+          process[i] = pb.start();
+          iot[i] = new IOThread(
+              process[i].getInputStream(),
+              process[i].getOutputStream(),
+              this,
+              i
+            );
+          it[i] = new InputThread(
+              process[i].getErrorStream(),
+              this,
+              i
+            );
+          iot[i].start();
+          it[i].start();
+        } catch (Exception e) {
+          e.printStackTrace();
+          return;
+        }
       }
       leftTime[i] = player[i].getTime()*1000;
       player[i].setLeftTime(leftTime[i]);
+      player[i].clearIO();
     }
 
     turn = 0;
     running = true;
+    waiting = true;
     startThinking = System.currentTimeMillis();
     kifu.setText("--begin--\n");
+    if (!isHuman[turn]) {
+      String[] boardstr = {
+        "........",
+        "........",
+        "........",
+        "...ox...",
+        "...xo...",
+        "........",
+        "........",
+        "........"
+      };
+      iot[turn].write(leftTime[turn], turn, -1, boardstr);
+    }
 
     loopTimer = new Timer(30, this);
     loopTimer.start();
@@ -276,17 +471,22 @@ class Board extends JPanel implements ActionListener {
   public void actionPerformed(ActionEvent e) {
     if (!running) {
       loopTimer.stop();
+      for (int i=0; i<2; i++) {
+        if (!isHuman[i]) {
+          process[i].destroy();
+          System.out.println("destroyed " + i);
+        }
+      }
       return;
     }
-    if (isHuman[turn]) {  // human
-      long passed = System.currentTimeMillis() - startThinking;
-      if (leftTime[turn] - passed <= 0) {
-        player[turn].setLeftTime(0);
-        // TLE
-        running = false;
-      } else {
-        player[turn].setLeftTime(leftTime[turn] - passed);
-      }
+
+    long passed = System.currentTimeMillis() - startThinking;
+    if (leftTime[turn] - passed <= 0) {
+      player[turn].setLeftTime(0);
+      // TLE
+      halt();
+    } else {
+      player[turn].setLeftTime(leftTime[turn] - passed);
     }
   }
 
@@ -403,6 +603,19 @@ class SettingPanel extends JPanel {
   public int getTime() {
     return ti.getTime();
   }
+
+  public void Cout(String line) {
+    cout.append(line + "\n");
+  }
+  public void Cerr(String line) {
+    cerr.append(line + "\n");
+  }
+
+  public void clearIO() {
+    cout.setText("");
+    cerr.setText("");
+  }
+
 }
 
 class TimeOption extends JPanel {
