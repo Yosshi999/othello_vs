@@ -512,6 +512,7 @@ class Board extends JPanel implements ActionListener {
       if (leftTime[turn] - passed <= 0) {
         player[turn].setLeftTime(0);
         // TLE
+        kifu.append("##TLE##\n");
         halt();
       } else {
         player[turn].setLeftTime(leftTime[turn] - passed);
