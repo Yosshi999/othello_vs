@@ -28,3 +28,13 @@ bij: stone at (i,j)
 i,j: put stone at (i,j)
 
 0 <= i,j <= 7
+
+# Use "Flush"!
+
+pythonをAIとして動かすとき、flushが必要になることがあります。
+
+    sys.stdout.write("1 2\n")
+    sys.stdout.flush()
+
+    print(1,2, flush=True)
+    
