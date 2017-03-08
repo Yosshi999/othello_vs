@@ -47,7 +47,7 @@ int main(){
 	while (1) {
 		long t;
 		cin >> t;
-		cerr << t;
+		cerr << t << endl;
 
 		cin >> turn >> li;
 

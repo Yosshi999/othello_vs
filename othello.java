@@ -451,10 +451,12 @@ class Board extends JPanel implements ActionListener {
             destroy_all();
             return;
           }
+          //String[] splited = path.split(" ",0);
+          //ProcessBuilder pb = new ProcessBuilder("python", "test.py");
           System.out.println("opening " + path);
-          ProcessBuilder pb = new ProcessBuilder(path);
 
-          process[i] = pb.start();
+          //process[i] = pb.start();
+          process[i] = Runtime.getRuntime().exec(path);
           iot[i] = new IOThread(
               process[i].getInputStream(),
               process[i].getOutputStream(),
