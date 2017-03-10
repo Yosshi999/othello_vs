@@ -277,6 +277,7 @@ class Board extends JPanel implements ActionListener {
                 back_l -= offset[i][1];
               }
             }
+            break;
           } else {
             // unable to Flip
             break;
@@ -372,6 +373,8 @@ class Board extends JPanel implements ActionListener {
     if (passCount == 2) { // both players pass
       // game over
       halt();
+      String kifuText = kifu.getText();
+      kifu.append("\nhttp://reversi-ai.appspot.com/v1.61/hamlite.html?kifu=" + kifuText.replaceAll("(--|##.*?##|\\s)",""));
       return;
     }
 
@@ -484,7 +487,7 @@ class Board extends JPanel implements ActionListener {
     running = true;
     waiting = true;
     startThinking = System.nanoTime();
-    kifu.setText("--begin--\n");
+    kifu.setText("##begin##\n");
     if (!isHuman[turn]) {
       String[] boardstr = {
         "........",
