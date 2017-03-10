@@ -287,7 +287,7 @@ class Board extends JPanel implements ActionListener {
     if (canFlip) {
       if (!simulation) {
         cells[row][line].putStone(turn==0?1:-1);
-        kifu.append(""+"abcdefgh".charAt(line) + (row+1) + (turn==0?" ":"\n"));
+        kifu.append(""+"abcdefgh".charAt(line) + (row+1) + (turn==0?"\n":" "));
 
         // update the number of stones
         int w = 0, b = 0;
@@ -390,7 +390,7 @@ class Board extends JPanel implements ActionListener {
     }
     if (!canPut) {
       // pass
-      kifu.append("--" + (turn==0?" ":"\n"));
+      kifu.append("--" + (turn==0?"\n":" "));
       switchTurn(passCount+1);
       return;
     }
@@ -480,7 +480,7 @@ class Board extends JPanel implements ActionListener {
       player[i].clearIO();
     }
 
-    turn = 0;
+    turn = 1; // first is black
     running = true;
     waiting = true;
     startThinking = System.nanoTime();
