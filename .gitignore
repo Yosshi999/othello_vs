@@ -1,7 +1,5 @@
 *.class
-
 *.exe
 *.log
 *.bat
-test.*
 AI

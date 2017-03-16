@@ -1,5 +1,7 @@
 # othello_vs
 
+javac 1.8.0_121 
+
 ## input
 
 
